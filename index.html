@@ -58,6 +58,21 @@
         transform: translateY(1px) scale(0.98);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
       }
+
+      #status {
+        position: fixed;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+        font-size: 13px;
+        pointer-events: none;
+        max-width: 90vw;
+        text-align: center;
+      }
     </style>
   </head>
   <body>
@@ -65,10 +80,17 @@
     <div id="ui-overlay">
       <button id="start-ar">Iniciar AR (MindAR)</button>
     </div>
+    <div id="status"></div>
 
     <script>
       const startButton = document.getElementById("start-ar");
       const container = document.getElementById("ar-container");
+      const statusEl = document.getElementById("status");
+
+      const setStatus = (msg) => {
+        if (!statusEl) return;
+        statusEl.textContent = msg || "";
+      };
 
       let mindarThree;
       let renderer, scene, camera;
@@ -76,6 +98,14 @@
       let solarModel = null;
 
       const initMindAR = async () => {
+        setStatus("A inicializar MindAR...");
+
+        if (location.protocol === "file:") {
+          throw new Error(
+            "A página está a ser aberta via ficheiro (file://). Usa http://localhost ou HTTPS para a câmara funcionar."
+          );
+        }
+
         mindarThree = new window.MINDAR.IMAGE.MindARThree({
           container: container,
           imageTargetSrc: "solar.mind", // gerado a partir de solar.jpg
@@ -102,6 +132,7 @@
         anchor = mindarThree.addAnchor(0);
 
         // Carregar modelo solar.glb
+        setStatus("A carregar modelo solar.glb...");
         const loader = new THREE.GLTFLoader();
         loader.load(
           "solar.glb",
@@ -112,10 +143,12 @@
             solarModel.rotation.x = -Math.PI / 2; // opcional
             solarModel.position.set(0, 0, 0); // centrado no marcador
             anchor.group.add(solarModel);
+            setStatus("Modelo carregado. A iniciar câmara...");
           },
           undefined,
           (error) => {
             console.error("Erro ao carregar solar.glb:", error);
+            setStatus("Erro ao carregar solar.glb (ver consola).");
           }
         );
       };
@@ -125,7 +158,9 @@
 
         try {
           await initMindAR();
+          setStatus("A pedir acesso à câmara...");
           await mindarThree.start(); // inicia câmara + tracking
+          setStatus("Câmara iniciada. A procurar o marcador...");
 
           // Loop de renderização "oficial" MindAR + Three.js
           renderer.setAnimationLoop(() => {
@@ -137,8 +172,10 @@
           });
         } catch (e) {
           console.error(e);
-          alert(
-            "Não foi possível iniciar a AR. Verifica se estás em HTTPS/localhost e dá permissão à câmara."
+          setStatus(
+            "Não foi possível iniciar a AR: " + (e && e.message
+              ? e.message
+              : "ver consola para detalhes.")
           );
           startButton.style.display = "block";
         }
