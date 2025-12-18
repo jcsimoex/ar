@@ -5,9 +5,9 @@
     <title>AR com MindAR - solar.jpg</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Three.js + GLTFLoader + MindAR (versão image) -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- Three.js + GLTFLoader + MindAR (versão compatível) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-three.prod.js"></script>
 
     <style>
@@ -76,7 +76,6 @@
       let solarModel = null;
 
       const initMindAR = async () => {
-        // Inicializar MindAR + Three.js
         mindarThree = new window.MINDAR.IMAGE.MindARThree({
           container: container,
           imageTargetSrc: "solar.mind", // gerado a partir de solar.jpg
@@ -88,7 +87,7 @@
         camera = mindarThree.camera;
 
         // Fundo transparente (vídeo da câmara é gerido pelo MindAR por baixo)
-        renderer.setClearColor(0x000000, 0); // alpha = 0
+        renderer.setClearColor(0x000000, 0);
 
         // Luz ambiente
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
@@ -99,7 +98,7 @@
         dirLight.position.set(1, 2, 1);
         scene.add(dirLight);
 
-        // Anchor para o alvo de imagem com índice 0 (primeiro target no .mind)
+        // Anchor para o alvo de imagem com índice 0
         anchor = mindarThree.addAnchor(0);
 
         // Carregar modelo solar.glb
@@ -108,13 +107,10 @@
           "solar.glb",
           (gltf) => {
             solarModel = gltf.scene;
-
             // Ajustar escala e orientação
-            solarModel.scale.set(0.2, 0.2, 0.2); // ajusta conforme necessário
-            solarModel.rotation.x = -Math.PI / 2; // opcional, depende do ficheiro
+            solarModel.scale.set(0.2, 0.2, 0.2);
+            solarModel.rotation.x = -Math.PI / 2; // opcional
             solarModel.position.set(0, 0, 0); // centrado no marcador
-
-            // Adiciona o modelo ao grupo do anchor (segue a pose da imagem)
             anchor.group.add(solarModel);
           },
           undefined,
@@ -122,30 +118,30 @@
             console.error("Erro ao carregar solar.glb:", error);
           }
         );
-
-        // Render loop
-        const clock = new THREE.Clock();
-
-        const animate = () => {
-          const delta = clock.getDelta();
-
-          // Exemplo: rotação subtil do modelo para dar vida, mantendo ancorado
-          if (solarModel) {
-            solarModel.rotation.z += delta * 0.2; // gira lentamente
-          }
-
-          renderer.render(scene, camera);
-          requestAnimationFrame(animate);
-        };
-
-        animate();
       };
 
       startButton.addEventListener("click", async () => {
         startButton.style.display = "none";
 
-        await initMindAR();
-        await mindarThree.start(); // inicia câmara + tracking
+        try {
+          await initMindAR();
+          await mindarThree.start(); // inicia câmara + tracking
+
+          // Loop de renderização "oficial" MindAR + Three.js
+          renderer.setAnimationLoop(() => {
+            // Animação suave (opcional)
+            if (solarModel) {
+              solarModel.rotation.z += 0.01;
+            }
+            renderer.render(scene, camera);
+          });
+        } catch (e) {
+          console.error(e);
+          alert(
+            "Não foi possível iniciar a AR. Verifica se estás em HTTPS/localhost e dá permissão à câmara."
+          );
+          startButton.style.display = "block";
+        }
       });
     </script>
   </body>
