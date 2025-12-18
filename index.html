@@ -2,205 +2,13 @@
 <html lang="pt">
   <head>
     <meta charset="utf-8" />
-    <title>AR WebXR - Image Tracking solar.jpg</title>
+    <title>AR com MindAR - solar.jpg</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Three.js + GLTFLoader via CDN (ES Modules) -->
-    <script type="module">
-      import * as THREE from "https://unpkg.com/three@0.165.0/build/three.module.js";
-      import { GLTFLoader } from "https://unpkg.com/three@0.165.0/examples/jsm/loaders/GLTFLoader.js";
 
-      let renderer, scene, camera;
-      let xrSession = null;
-      let xrRefSpace = null;
-      let solarAnchorGroup = null;
-      let solarModel = null;
-
-      let modelLoaded = false;
-      let imageTrackingSupported = false;
-
-      // Índice da imagem dentro do array trackedImages (apenas 1 neste exemplo)
-      const SOLAR_IMAGE_INDEX = 0;
-
-      async function initThree() {
-        const container = document.getElementById("ar-container");
-
-        renderer = new THREE.WebGLRenderer({
-          antialias: true,
-          alpha: true, // fundo transparente
-        });
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true;
-        renderer.xr.setReferenceSpaceType("local"); // espaço "local" para AR
-        container.appendChild(renderer.domElement);
-
-        scene = new THREE.Scene();
-        // Não definimos background → fica transparente
-
-        camera = new THREE.PerspectiveCamera(
-          70,
-          window.innerWidth / window.innerHeight,
-          0.01,
-          100
-        );
-
-        // Luz ambiente suave
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-        scene.add(ambientLight);
-
-        // Luz direcional para dar volume ao modelo
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(1, 2, 1);
-        scene.add(dirLight);
-
-        // Grupo que irá seguir a pose da imagem
-        solarAnchorGroup = new THREE.Group();
-        solarAnchorGroup.visible = false; // só visível quando a imagem é rastreada
-        scene.add(solarAnchorGroup);
-
-        // Carregar o modelo 3D
-        const loader = new GLTFLoader();
-        loader.load(
-          "solar.glb",
-          (gltf) => {
-            solarModel = gltf.scene;
-            // Ajustar escala/orientação conforme necessário
-            solarModel.scale.set(0.2, 0.2, 0.2); // experimente ajustar
-            solarModel.rotation.x = -Math.PI / 2; // exemplo: deitar o modelo, dependendo do ficheiro
-            solarModel.position.set(0, 0, 0); // centrado no marcador
-            solarAnchorGroup.add(solarModel);
-            modelLoaded = true;
-          },
-          undefined,
-          (err) => {
-            console.error("Erro ao carregar solar.glb:", err);
-          }
-        );
-
-        window.addEventListener("resize", onWindowResize);
-      }
-
-      function onWindowResize() {
-        if (!renderer || !camera) return;
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      }
-
-      async function checkXRSupport() {
-        if (!navigator.xr) {
-          throw new Error("WebXR não é suportado neste navegador.");
-        }
-
-        const isSupported = await navigator.xr.isSessionSupported(
-          "immersive-ar"
-        );
-        if (!isSupported) {
-          throw new Error("Sessões 'immersive-ar' não são suportadas.");
-        }
-
-        // Verificar se a feature de image tracking está disponível
-        // A forma correta varia por implementação, mas tentamos via requestSession com feature
-        imageTrackingSupported = true; // assumido; se falhar no requestSession, tratamos o erro
-      }
-
-      async function createTrackedImageBitmap() {
-        // Carrega solar.jpg e cria um ImageBitmap para usar no trackedImages
-        const response = await fetch("solar.jpg");
-        const blob = await response.blob();
-        const bitmap = await createImageBitmap(blob);
-        return bitmap;
-      }
-
-      async function startARSession() {
-        try {
-          await checkXRSupport();
-
-          const imageBitmap = await createTrackedImageBitmap();
-
-          // Largura física estimada do marcador em metros (ajuste consoante o tamanho real)
-          const markerWidthMeters = 0.2;
-
-          const sessionInit = {
-            requiredFeatures: ["local", "hit-test", "image-tracking"], // "image-tracking" para image tracking
-            trackedImages: [
-              {
-                image: imageBitmap,
-                widthInMeters: markerWidthMeters,
-              },
-            ],
-          };
-
-          xrSession = await navigator.xr.requestSession(
-            "immersive-ar",
-            sessionInit
-          );
-
-          // Ligar sessão ao renderer Three.js
-          renderer.xr.setSession(xrSession);
-
-          xrRefSpace = await xrSession.requestReferenceSpace("local");
-
-          // Loop de renderização com frame XR
-          xrSession.requestAnimationFrame(onXRFrame);
-
-          // Atualizar UI
-          document.getElementById("start-ar").style.display = "none";
-        } catch (err) {
-          console.error(err);
-          alert(
-            "Não foi possível iniciar a sessão AR. Ver consola para detalhes."
-          );
-        }
-      }
-
-      function onXRFrame(time, frame) {
-        const session = frame.session;
-
-        // Atualizar pose da imagem rastreada
-        if (imageTrackingSupported && xrRefSpace && frame.getImageTrackingResults) {
-          const results = frame.getImageTrackingResults();
-          for (const result of results) {
-            const imageIndex = result.index;
-            const state = result.trackingState; // "tracked", "emulated" ou "not-tracked"
-
-            if (imageIndex === SOLAR_IMAGE_INDEX && modelLoaded) {
-              if (state === "tracked" || state === "emulated") {
-                const refSpace = xrRefSpace;
-                const pose = frame.getPose(result.imageSpace, refSpace);
-                if (pose) {
-                  // Aplicar a pose ao grupo que contém o modelo
-                  const mat = new THREE.Matrix4().fromArray(
-                    pose.transform.matrix
-                  );
-                  solarAnchorGroup.matrix = mat;
-                  solarAnchorGroup.matrixAutoUpdate = false;
-                  solarAnchorGroup.visible = true;
-                }
-              } else {
-                // Se não estiver rastreado, podemos esconder o modelo
-                solarAnchorGroup.visible = false;
-              }
-            }
-          }
-        }
-
-        // Renderizar cena AR
-        renderer.xr.updateCamera(camera);
-        renderer.render(scene, camera);
-
-        // Pedir o próximo frame
-        session.requestAnimationFrame(onXRFrame);
-      }
-
-      // Inicializar ao carregar a página
-      window.addEventListener("DOMContentLoaded", async () => {
-        await initThree();
-
-        const startButton = document.getElementById("start-ar");
-        startButton.addEventListener("click", startARSession);
-      });
-    </script>
+    <!-- Three.js + GLTFLoader + MindAR (versão image) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-three.prod.js"></script>
 
     <style>
       body {
@@ -255,7 +63,90 @@
   <body>
     <div id="ar-container"></div>
     <div id="ui-overlay">
-      <button id="start-ar">Iniciar AR com Image Tracking</button>
+      <button id="start-ar">Iniciar AR (MindAR)</button>
     </div>
+
+    <script>
+      const startButton = document.getElementById("start-ar");
+      const container = document.getElementById("ar-container");
+
+      let mindarThree;
+      let renderer, scene, camera;
+      let anchor;
+      let solarModel = null;
+
+      const initMindAR = async () => {
+        // Inicializar MindAR + Three.js
+        mindarThree = new window.MINDAR.IMAGE.MindARThree({
+          container: container,
+          imageTargetSrc: "solar.mind", // gerado a partir de solar.jpg
+          maxTrack: 1,
+        });
+
+        renderer = mindarThree.renderer;
+        scene = mindarThree.scene;
+        camera = mindarThree.camera;
+
+        // Fundo transparente (vídeo da câmara é gerido pelo MindAR por baixo)
+        renderer.setClearColor(0x000000, 0); // alpha = 0
+
+        // Luz ambiente
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+
+        // Luz direcional
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+        dirLight.position.set(1, 2, 1);
+        scene.add(dirLight);
+
+        // Anchor para o alvo de imagem com índice 0 (primeiro target no .mind)
+        anchor = mindarThree.addAnchor(0);
+
+        // Carregar modelo solar.glb
+        const loader = new THREE.GLTFLoader();
+        loader.load(
+          "solar.glb",
+          (gltf) => {
+            solarModel = gltf.scene;
+
+            // Ajustar escala e orientação
+            solarModel.scale.set(0.2, 0.2, 0.2); // ajusta conforme necessário
+            solarModel.rotation.x = -Math.PI / 2; // opcional, depende do ficheiro
+            solarModel.position.set(0, 0, 0); // centrado no marcador
+
+            // Adiciona o modelo ao grupo do anchor (segue a pose da imagem)
+            anchor.group.add(solarModel);
+          },
+          undefined,
+          (error) => {
+            console.error("Erro ao carregar solar.glb:", error);
+          }
+        );
+
+        // Render loop
+        const clock = new THREE.Clock();
+
+        const animate = () => {
+          const delta = clock.getDelta();
+
+          // Exemplo: rotação subtil do modelo para dar vida, mantendo ancorado
+          if (solarModel) {
+            solarModel.rotation.z += delta * 0.2; // gira lentamente
+          }
+
+          renderer.render(scene, camera);
+          requestAnimationFrame(animate);
+        };
+
+        animate();
+      };
+
+      startButton.addEventListener("click", async () => {
+        startButton.style.display = "none";
+
+        await initMindAR();
+        await mindarThree.start(); // inicia câmara + tracking
+      });
+    </script>
   </body>
 </html>
