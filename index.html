@@ -2,13 +2,14 @@
 <html lang="pt">
   <head>
     <meta charset="utf-8" />
-    <title>AR com MindAR</title>
+    <title>AR com MindAR - solar.jpg</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- Three.js + GLTFLoader + MindAR (versão compatível) -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-three.prod.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- Versão estável do MindAR (image + three) em formato UMD que expõe window.MINDAR.IMAGE -->
+    <script src="https://unpkg.com/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
 
     <style>
       body {
@@ -58,21 +59,6 @@
         transform: translateY(1px) scale(0.98);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
       }
-
-      #status {
-        position: fixed;
-        left: 50%;
-        bottom: 16px;
-        transform: translateX(-50%);
-        padding: 8px 16px;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.6);
-        color: #fff;
-        font-size: 13px;
-        pointer-events: none;
-        max-width: 90vw;
-        text-align: center;
-      }
     </style>
   </head>
   <body>
@@ -80,17 +66,10 @@
     <div id="ui-overlay">
       <button id="start-ar">Iniciar AR (MindAR)</button>
     </div>
-    <div id="status"></div>
 
     <script>
       const startButton = document.getElementById("start-ar");
       const container = document.getElementById("ar-container");
-      const statusEl = document.getElementById("status");
-
-      const setStatus = (msg) => {
-        if (!statusEl) return;
-        statusEl.textContent = msg || "";
-      };
 
       let mindarThree;
       let renderer, scene, camera;
@@ -98,14 +77,20 @@
       let solarModel = null;
 
       const initMindAR = async () => {
-        setStatus("A inicializar MindAR...");
-
+        // Verificação de contexto seguro para acesso à câmara
         if (location.protocol === "file:") {
           throw new Error(
             "A página está a ser aberta via ficheiro (file://). Usa http://localhost ou HTTPS para a câmara funcionar."
           );
         }
 
+        if (!window.MINDAR || !window.MINDAR.IMAGE) {
+          throw new Error(
+            "MindAR não foi carregado corretamente (window.MINDAR.IMAGE está undefined). Verifica a ligação à internet e a tag <script> do MindAR."
+          );
+        }
+
+        // Inicializar MindAR + Three.js
         mindarThree = new window.MINDAR.IMAGE.MindARThree({
           container: container,
           imageTargetSrc: "solar.mind", // gerado a partir de solar.jpg
@@ -117,7 +102,7 @@
         camera = mindarThree.camera;
 
         // Fundo transparente (vídeo da câmara é gerido pelo MindAR por baixo)
-        renderer.setClearColor(0x000000, 0);
+        renderer.setClearColor(0x000000, 0); // alpha = 0
 
         // Luz ambiente
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
@@ -128,27 +113,27 @@
         dirLight.position.set(1, 2, 1);
         scene.add(dirLight);
 
-        // Anchor para o alvo de imagem com índice 0
+        // Anchor para o alvo de imagem com índice 0 (primeiro target no .mind)
         anchor = mindarThree.addAnchor(0);
 
         // Carregar modelo solar.glb
-        setStatus("A carregar modelo solar.glb...");
         const loader = new THREE.GLTFLoader();
         loader.load(
           "solar.glb",
           (gltf) => {
             solarModel = gltf.scene;
+
             // Ajustar escala e orientação
-            solarModel.scale.set(0.2, 0.2, 0.2);
-            solarModel.rotation.x = -Math.PI / 2; // opcional
+            solarModel.scale.set(0.2, 0.2, 0.2); // ajusta conforme necessário
+            solarModel.rotation.x = -Math.PI / 2; // opcional, depende do ficheiro
             solarModel.position.set(0, 0, 0); // centrado no marcador
+
+            // Adiciona o modelo ao grupo do anchor (segue a pose da imagem)
             anchor.group.add(solarModel);
-            setStatus("Modelo carregado. A iniciar câmara...");
           },
           undefined,
           (error) => {
             console.error("Erro ao carregar solar.glb:", error);
-            setStatus("Erro ao carregar solar.glb (ver consola).");
           }
         );
       };
@@ -158,25 +143,29 @@
 
         try {
           await initMindAR();
-          setStatus("A pedir acesso à câmara...");
-          await mindarThree.start(); // inicia câmara + tracking
-          setStatus("Câmara iniciada. A procurar o marcador...");
+          await mindarThree.start(); // inicia câmara + tracking (deve disparar o pedido de permissão)
 
-          // Loop de renderização "oficial" MindAR + Three.js
+          // Loop de renderização recomendado pelo MindAR
+          const clock = new THREE.Clock();
           renderer.setAnimationLoop(() => {
-            // Animação suave (opcional)
+            const delta = clock.getDelta();
+
+            // Exemplo: rotação subtil do modelo para dar vida, mantendo ancorado
             if (solarModel) {
-              solarModel.rotation.z += 0.01;
+              solarModel.rotation.z += delta * 0.2; // gira lentamente
             }
+
             renderer.render(scene, camera);
           });
         } catch (e) {
-          console.error(e);
-          setStatus(
-            "Não foi possível iniciar a AR: " + (e && e.message
-              ? e.message
-              : "ver consola para detalhes.")
+          console.error("Erro ao iniciar AR/MindAR:", e);
+          alert(
+            "Não foi possível iniciar a AR.\n\n" +
+              (e && e.message
+                ? e.message
+                : "Ver consola do navegador (F12) para mais detalhes.")
           );
+          // Mostrar o botão novamente para nova tentativa
           startButton.style.display = "block";
         }
       });
